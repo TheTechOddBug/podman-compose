@@ -1054,6 +1054,26 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_healthcheck_disable(self) -> None:
+        c = create_compose_mock()
+        cnt = get_minimal_container()
+        cnt["healthcheck"] = {
+            "test": "cmd arg1 arg2",
+            "disable": "true",
+        }
+
+        args = await container_to_args(c, cnt)
+        self.assertEqual(
+            args,
+            [
+                "--name=project_name_service_name1",
+                "-d",
+                "--network=bridge:alias=service_name",
+                "--no-healthcheck",
+                "busybox",
+            ],
+        )
+
     async def test_healthcheck_cmd_shell_error(self) -> None:
         c = create_compose_mock()
         cnt = get_minimal_container()
@@ -1061,5 +1081,90 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             "test": ["CMD-SHELL", "cmd arg1", "arg2"],
         }
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "'CMD-SHELL' takes a single string after it"):
             await container_to_args(c, cnt)
+
+    async def test_unknown_healthcheck_test_type(self) -> None:
+        c = create_compose_mock()
+        cnt = get_minimal_container()
+        cnt["healthcheck"] = {
+            "test": ["TEST", "arg1", "arg2"],
+        }
+        with self.assertRaises(ValueError) as error_msg:
+            await container_to_args(c, cnt)
+
+        expected = "unknown healthcheck test type [TEST], expecting NONE, CMD or CMD-SHELL."
+        self.assertEqual(expected, str(error_msg.exception))
+
+    async def test_healthcheck_test_not_string_or_list(self) -> None:
+        c = create_compose_mock()
+        cnt = get_minimal_container()
+        cnt["healthcheck"] = {
+            "test": 2,
+        }
+
+        with self.assertRaisesRegex(ValueError, "'healthcheck.test' either a string or a list"):
+            await container_to_args(c, cnt)
+
+    async def test_healthcheck_not_a_dict_error(self) -> None:
+        c = create_compose_mock()
+        cnt = get_minimal_container()
+        cnt["healthcheck"] = []
+
+        with self.assertRaisesRegex(ValueError, "'healthcheck' must be a key-value mapping"):
+            await container_to_args(c, cnt)
+
+    async def test_healthcheck_test_is_missing(self) -> None:
+        c = create_compose_mock()
+        cnt = get_minimal_container()
+        cnt["healthcheck"] = {
+            "interval": "1m",
+            "retries": "3",
+        }
+
+        args = await container_to_args(c, cnt)
+        self.assertEqual(
+            args,
+            [
+                "--name=project_name_service_name1",
+                "-d",
+                "--network=bridge:alias=service_name",
+                '--healthcheck-interval',
+                '1m',
+                '--healthcheck-retries',
+                '3',
+                "busybox",
+            ],
+        )
+
+    async def test_healthcheck_options(self) -> None:
+        c = create_compose_mock()
+        cnt = get_minimal_container()
+        cnt["healthcheck"] = {
+            "test": ["CMD", "cmd", "arg1", "arg2"],
+            "interval": "1m",
+            "timeout": "10s",
+            "retries": "3",
+            "start_period": "5s",
+        }
+
+        args = await container_to_args(c, cnt)
+        self.assertEqual(
+            args,
+            [
+                "--name=project_name_service_name1",
+                "-d",
+                "--network=bridge:alias=service_name",
+                "--healthcheck-command",
+                '["cmd", "arg1", "arg2"]',
+                '--healthcheck-interval',
+                '1m',
+                '--healthcheck-timeout',
+                '10s',
+                '--healthcheck-start-period',
+                '5s',
+                '--healthcheck-retries',
+                '3',
+                "busybox",
+            ],
+        )

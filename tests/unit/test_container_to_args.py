@@ -1171,6 +1171,7 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             "timeout": "10s",
             "retries": "3",
             "start_period": "5s",
+            "start_interval": "6s",
         }
 
         args = await container_to_args(c, cnt)
@@ -1188,6 +1189,8 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
                 '10s',
                 '--health-start-period',
                 '5s',
+                '--health-startup-interval',
+                '6s',
                 '--health-retries',
                 '3',
                 "busybox",

@@ -891,28 +891,13 @@ def get_secret_args(
         secret_opts += f",gid={secret_gid}" if secret_gid else ""
         secret_opts += f",mode={secret_mode}" if secret_mode else ""
         secret_opts += f",type={secret_type}" if secret_type else ""
-        secret_opts += f",target={secret_target}" if secret_target and secret_type == "env" else ""
-        # The target option is only valid for type=env,
-        # which in an ideal world would work
-        # for type=mount as well.
-        # having a custom name for the external secret
-        # has the same problem as well
+        secret_opts += f",target={secret_target}" if secret_target else ""
+        # having a custom name for the external secret is not supported
         ext_name = declared_secret.get("name")
-        err_str = (
-            'ERROR: Custom name/target reference "{}" '
-            'for mounted external secret "{}" is not supported'
-        )
         if ext_name and ext_name != secret_name:
-            raise ValueError(err_str.format(secret_name, ext_name))
-        if secret_target and secret_target != secret_name and secret_type != 'env':
-            raise ValueError(err_str.format(secret_target, secret_name))
-        if secret_target and secret_type != 'env':
-            log.warning(
-                'WARNING: Service "%s" uses target: "%s" for secret: "%s".'
-                + " That is un-supported and a no-op and is ignored.",
-                cnt["_service"],
-                secret_target,
-                secret_name,
+            raise ValueError(
+                f'ERROR: Custom name/target reference "{secret_name}" '
+                f'for mounted external secret "{ext_name}" is not supported'
             )
         return ["--secret", f"{secret_name}{secret_opts}"]
 

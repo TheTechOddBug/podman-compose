@@ -603,7 +603,10 @@ async def assert_volume(compose: PodmanCompose, mount_dict: dict[str, Any]) -> N
 
     except subprocess.CalledProcessError as e:
         if is_ext:
-            raise RuntimeError(f"External volume [{vol_name}] does not exist") from e
+            raise PodmanComposeError(
+                f"External volume [{vol_name}] does not exist. "
+                f"Create it first with: podman volume create '{vol_name}'"
+            ) from e
         labels = vol.get("labels", [])
         args = [
             "create",
@@ -1154,7 +1157,10 @@ async def assert_cnt_nets(compose: PodmanCompose, cnt: dict[str, Any]) -> None:
             await compose.podman.output([], "network", ["exists", net_name])
         except subprocess.CalledProcessError as e:
             if is_ext:
-                raise RuntimeError(f"External network [{net_name}] does not exist") from e
+                raise PodmanComposeError(
+                    f"External network [{net_name}] does not exist. "
+                    f"Create it first with: podman network create '{net_name}'"
+                ) from e
             args = get_network_create_args(net_desc, compose.project_name, net_name)
             await compose.podman.output([], "network", args)
             await compose.podman.output([], "network", ["exists", net_name])
@@ -4953,7 +4959,11 @@ async def async_main() -> None:
 
 
 def main() -> None:
-    asyncio.run(async_main())
+    try:
+        asyncio.run(async_main())
+    except PodmanComposeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

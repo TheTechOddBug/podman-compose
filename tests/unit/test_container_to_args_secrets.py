@@ -179,12 +179,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
             }
         ]
 
-        with self.assertLogs() as cm:
-            args = await container_to_args(c, cnt)
-        self.assertEqual(len(cm.output), 1)
-        self.assertIn('That is un-supported and a no-op and is ignored.', cm.output[0])
-        self.assertIn('my_secret_name', cm.output[0])
-
+        args = await container_to_args(c, cnt)
         self.assertEqual(
             args,
             [
@@ -192,7 +187,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
                 "-d",
                 "--network=bridge:alias=service_name",
                 "--secret",
-                "my_secret_name,uid=103,gid=103,mode=400",
+                "my_secret_name,uid=103,gid=103,mode=400,target=my_secret_name",
                 "busybox",
             ],
         )
@@ -217,7 +212,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
             await container_to_args(c, cnt)
         self.assertIn('ERROR: Custom name/target reference ', str(context.exception))
 
-    async def test_secret_target_does_not_match_secret_name_secret_type_not_env(self) -> None:
+    async def test_secret_target_does_not_match_secret_name_secret_type_mount(self) -> None:
         c = create_compose_mock()
         c.declared_secrets = {
             "my_secret_name": {
@@ -229,14 +224,23 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
         cnt["secrets"] = [
             {
                 "source": "my_secret_name",
-                "target": "does_not_equal_secret_name",
-                "type": "does_not_equal_env",
+                "target": "/tmp/custom_path",
+                "type": "mount",
             }
         ]
 
-        with self.assertRaises(ValueError) as context:
-            await container_to_args(c, cnt)
-        self.assertIn('ERROR: Custom name/target reference ', str(context.exception))
+        args = await container_to_args(c, cnt)
+        self.assertEqual(
+            args,
+            [
+                "--name=project_name_service_name1",
+                "-d",
+                "--network=bridge:alias=service_name",
+                "--secret",
+                "my_secret_name,type=mount,target=/tmp/custom_path",
+                "busybox",
+            ],
+        )
 
     async def test_secret_target_does_not_match_secret_name_secret_type_env(self) -> None:
         c = create_compose_mock()
@@ -273,16 +277,9 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
         }
         cnt = get_minimal_container()
         cnt["_service"] = "test-service"
-        cnt["secrets"] = [
-            {"source": "my_secret_name", "target": "my_secret_name", "type": "does_not_equal_env"}
-        ]
+        cnt["secrets"] = [{"source": "my_secret_name", "target": "my_secret_name", "type": "mount"}]
 
-        with self.assertLogs() as cm:
-            args = await container_to_args(c, cnt)
-        self.assertEqual(len(cm.output), 1)
-        self.assertIn('That is un-supported and a no-op and is ignored.', cm.output[0])
-        self.assertIn('my_secret_name', cm.output[0])
-
+        args = await container_to_args(c, cnt)
         self.assertEqual(
             args,
             [
@@ -290,7 +287,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
                 "-d",
                 "--network=bridge:alias=service_name",
                 "--secret",
-                "my_secret_name,type=does_not_equal_env",
+                "my_secret_name,type=mount,target=my_secret_name",
                 "busybox",
             ],
         )
@@ -428,3 +425,104 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError) as context:
             await container_to_args(c, cnt)
         self.assertIn('not supported for runtime secrets', str(context.exception))
+
+    async def test_external_secret_with_target_path_uid_gid_mode(self) -> None:
+        """Reproduce the reported bug: external secret with custom target path, uid, gid, mode."""
+        c = create_compose_mock()
+        c.declared_secrets = {"ssh-private-key": {"external": True}}
+        cnt = get_minimal_container()
+        cnt["_service"] = "alpine_secret"
+        cnt["secrets"] = [
+            {
+                "source": "ssh-private-key",
+                "target": "/tmp/private_key",
+                "mode": "700",
+                "uid": "600",
+                "gid": "600",
+            }
+        ]
+
+        args = await container_to_args(c, cnt)
+        self.assertEqual(
+            args,
+            [
+                "--name=project_name_service_name1",
+                "-d",
+                "--network=bridge:alias=service_name",
+                "--secret",
+                "ssh-private-key,uid=600,gid=600,mode=700,target=/tmp/private_key",
+                "busybox",
+            ],
+        )
+
+    async def test_external_secret_with_mount_type_and_target(self) -> None:
+        """External secret with explicit type=mount and a target path."""
+        c = create_compose_mock()
+        c.declared_secrets = {"my_secret": {"external": True}}
+        cnt = get_minimal_container()
+        cnt["_service"] = "test-service"
+        cnt["secrets"] = [
+            {
+                "source": "my_secret",
+                "target": "/etc/secrets/my_secret",
+                "type": "mount",
+                "uid": "1000",
+                "gid": "1000",
+                "mode": "400",
+            }
+        ]
+
+        args = await container_to_args(c, cnt)
+        self.assertEqual(
+            args,
+            [
+                "--name=project_name_service_name1",
+                "-d",
+                "--network=bridge:alias=service_name",
+                "--secret",
+                "my_secret,uid=1000,gid=1000,mode=400,type=mount,target=/etc/secrets/my_secret",
+                "busybox",
+            ],
+        )
+
+    async def test_external_secret_no_target(self) -> None:
+        """External secret without target should not include target in args."""
+        c = create_compose_mock()
+        c.declared_secrets = {"my_secret": {"external": True}}
+        cnt = get_minimal_container()
+        cnt["_service"] = "test-service"
+        cnt["secrets"] = [
+            {
+                "source": "my_secret",
+            }
+        ]
+
+        args = await container_to_args(c, cnt)
+        self.assertEqual(
+            args,
+            [
+                "--name=project_name_service_name1",
+                "-d",
+                "--network=bridge:alias=service_name",
+                "--secret",
+                "my_secret",
+                "busybox",
+            ],
+        )
+
+    async def test_external_secret_custom_name_mismatch_still_raises(self) -> None:
+        """External secret with mismatched 'name' should still raise ValueError."""
+        c = create_compose_mock()
+        c.declared_secrets = {
+            "my_secret": {
+                "external": True,
+                "name": "different_name",
+            }
+        }
+        cnt = get_minimal_container()
+        cnt["_service"] = "test-service"
+        cnt["secrets"] = ["my_secret"]
+
+        with self.assertRaises(ValueError) as context:
+            await container_to_args(c, cnt)
+        self.assertIn('ERROR: Custom name/target reference ', str(context.exception))

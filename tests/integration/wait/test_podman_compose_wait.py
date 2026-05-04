@@ -72,6 +72,8 @@ class TestComposeWait(unittest.TestCase, RunSubprocessMixin):
             "-f",
             compose_yaml_path(),
             "down",
+            "-t",
+            "0",
         ])
 
     def test_without_wait(self) -> None:

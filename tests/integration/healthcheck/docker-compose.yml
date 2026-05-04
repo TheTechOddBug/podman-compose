@@ -1,0 +1,12 @@
+services:
+  app:
+    command: ["sleep", "infinity"]
+    image: docker.io/library/alpine
+    volumes:
+      - ./health-trigger:/data
+    healthcheck:
+        test: ["CMD", "test", "-f", "/data/healthy"]
+        interval: 1s
+        timeout: 1s
+        retries: 2
+        start_period: 0s

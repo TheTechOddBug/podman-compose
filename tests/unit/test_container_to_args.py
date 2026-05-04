@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import subprocess
 import unittest
 from typing import Any
 from unittest import mock
@@ -9,6 +10,7 @@ from unittest import mock
 from parameterized import parameterized
 
 from podman_compose import PodmanCompose
+from podman_compose import PodmanComposeError
 from podman_compose import container_to_args
 
 
@@ -45,6 +47,29 @@ def get_test_file_path(rel_path: str) -> str:
 
 
 class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
+    async def test_external_network_missing_raises_user_friendly_error(self) -> None:
+        c = create_compose_mock()
+        c.default_net = "external_net"
+        c.networks = {
+            "external_net": {
+                "external": True,
+                "name": "missing-external-network",
+            }
+        }
+
+        async def podman_output(*args: Any, **kwargs: Any) -> None:
+            if args[2] == ["exists", "missing-external-network"]:
+                raise subprocess.CalledProcessError(1, "podman network exists")
+
+        setattr(c.podman, "output", mock.Mock(side_effect=podman_output))
+        cnt = get_minimal_container()
+
+        with self.assertRaisesRegex(
+            PodmanComposeError,
+            r"External network \[missing-external-network\] does not exist\.",
+        ):
+            await container_to_args(c, cnt)
+
     async def test_minimal(self) -> None:
         c = create_compose_mock()
 

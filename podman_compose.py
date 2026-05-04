@@ -1492,8 +1492,8 @@ async def container_to_args(
                 podman_args.extend(["--healthcheck-command", json.dumps(healthcheck_test)])
             else:
                 raise ValueError(
-                    f"unknown healthcheck test type [{healthcheck_type}],\
-                     expecting NONE, CMD or CMD-SHELL."
+                    f"unknown healthcheck test type [{healthcheck_type}], "
+                    "expecting NONE, CMD or CMD-SHELL."
                 )
         else:
             raise ValueError("'healthcheck.test' either a string or a list")

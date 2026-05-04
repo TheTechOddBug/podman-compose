@@ -3639,13 +3639,22 @@ async def pull_images(
 async def prepare_images(
     compose: PodmanCompose, args: argparse.Namespace, excluded: set[str]
 ) -> int | None:
-    log.info("pulling images: ...")
 
-    pull_services = [v for k, v in compose.services.items() if k not in excluded]
-    err = await pull_images(compose.podman, args, pull_services)
-    if err:
-        log.error("Pull image failed")
-        return err
+    # When creating containers, podman create internally invokes podman pull with the default
+    # policy of --pull=missing.
+    # To minimize downtime during container up command, we explicitly run podman pull before
+    # tearing down the old container, ensuring the image is already cached when we subsequently
+    # call podman create.
+    # However, the pull --policy flag was only introduced to podman in version 5.6.0, so we can
+    # only perform this pre-teardown optimization when using podman >= 5.6.0.
+    if compose.podman_version is not None and not strverscmp_lt(compose.podman_version, "5.6.0"):
+        log.info("pulling images: ...")
+
+        pull_services = [v for k, v in compose.services.items() if k not in excluded]
+        err = await pull_images(compose.podman, args, pull_services)
+        if err:
+            log.error("Pull image failed")
+            return err
 
     log.info("building images: ...")
 
@@ -3709,7 +3718,7 @@ async def wait_for_container_running_healthy(
 
 
 @cmd_run(podman_compose, "up", "Create and start the entire stack or some of its services")
-async def compose_up(compose: PodmanCompose, args: argparse.Namespace) -> int | None:
+async def compose_up(compose: PodmanCompose, args: argparse.Namespace) -> int | None:  # pylint: disable=too-many-return-statements
     excluded = get_excluded(compose, args)
 
     exit_code = await prepare_images(compose, args, excluded)
